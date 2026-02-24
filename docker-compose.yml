@@ -181,6 +181,55 @@ services:
   #     - warehouse-db
   #     - postgres
 
+  # Apache Doris Frontend - OLAP Analytics Database
+  doris-fe:
+    image: selectdb/doris.fe-ubuntu:2.0.2
+    container_name: oms_doris_fe
+    hostname: doris-fe
+    ports:
+      - "8030:8030"  # Web UI
+      - "9030:9030"  # MySQL protocol
+      - "9010:9010"  # RPC
+    environment:
+      FE_SERVERS: "fe:127.0.0.1:9010"
+    volumes:
+      - doris_fe_data:/opt/apache-doris/fe/doris-meta
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8030/api/bootstrap"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - oms_network
+    depends_on:
+      - kafka
+
+  # Apache Doris Backend
+  doris-be:
+    image: selectdb/doris.be-ubuntu:2.0.2
+    container_name: oms_doris_be
+    hostname: doris-be
+    ports:
+      - "9060:9060"  # Heartbeat
+      - "8040:8040"  # HTTP
+      - "9050:9050"  # RPC
+    environment:
+      FE_SERVERS: "fe:127.0.0.1:9010"
+    volumes:
+      - doris_be_data:/opt/apache-doris/be/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8040/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - oms_network
+    depends_on:
+      doris-fe:
+        condition: service_healthy
+
   # Python environment for Faker data generation
   data-generator:
     build:
@@ -220,6 +269,8 @@ volumes:
   kafka_connect_data:
   warehouse_data:
   pgadmin_data:
+  doris_fe_data:
+  doris_be_data:
 
 networks:
   oms_network:

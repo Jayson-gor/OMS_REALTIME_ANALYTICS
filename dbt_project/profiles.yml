@@ -1,25 +1,25 @@
 oms_realtime_analytics:
   outputs:
     dev:
-      type: postgres
+      type: doris
       host: localhost
-      port: 5434
-      user: analyst
-      password: analyst_pass
-      dbname: analytics
-      schema: public
+      port: 9030
+      user: root
+      password: ''
+      database: ecom
+      schema: ecom
       threads: 4
-      keepalives_idle: 0
+      driver: 'mysql'
       
     prod:
-      type: postgres
-      host: warehouse-db
-      port: 5432
-      user: analyst
-      password: analyst_pass
-      dbname: analytics
-      schema: public
+      type: doris
+      host: doris-fe
+      port: 9030
+      user: root
+      password: ''
+      database: ecom
+      schema: ecom
       threads: 4
-      keepalives_idle: 0
+      driver: 'mysql'
       
   target: dev
