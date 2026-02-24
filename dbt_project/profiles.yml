@@ -1,0 +1,27 @@
+oms_realtime_analytics:
+  outputs:
+    dev:
+      type: doris
+      driver: 'mysql+pymysql'
+      host: 'localhost'
+      port: 9030
+      user: root
+      password: '123456'
+      database: ecom
+      schema: ecom
+      threads: 4
+      timeout_seconds: 30
+      
+    prod:
+      type: doris
+      driver: 'mysql+pymysql'
+      host: 'doris-fe'
+      port: 9030
+      user: root
+      password: '123456'
+      database: ecom
+      schema: ecom
+      threads: 4
+      timeout_seconds: 30
+      
+  target: dev

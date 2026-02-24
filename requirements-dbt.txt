@@ -1,0 +1,4 @@
+dbt-core==1.7.0
+dbt-doris==1.7.0
+PyYAML==6.0
+jinja2==3.1.2

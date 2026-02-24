@@ -1,0 +1,232 @@
+version: '3.9'
+
+services:
+  # MySQL - Source 1 (WooCommerce-like orders)
+  mysql:
+    image: mysql:8.0
+    container_name: oms_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass123
+      MYSQL_DATABASE: ecom
+      MYSQL_USER: ecom_user
+      MYSQL_PASSWORD: ecom_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init/init-mysql.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - oms_network
+
+  # PostgreSQL - Source 2 (Dispatch/Logistics system)
+  postgres:
+    image: postgres:16
+    container_name: oms_postgres
+    environment:
+      POSTGRES_DB: dispatch
+      POSTGRES_USER: dispatch_user
+      POSTGRES_PASSWORD: dispatch_pass
+      POSTGRES_INITDB_ARGS: "-c wal_level=logical"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init/init-postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dispatch_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - oms_network
+
+  # Kafka (KRaft mode - no ZooKeeper needed)
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: oms_kafka
+    hostname: kafka
+    ports:
+      - "9092:9092"
+      - "19092:19092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONTROLLED_SHUTDOWN_ENABLE: 'true'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkQrQf1mT3egZK1ijsKzhA
+    healthcheck:
+      test: kafka-broker-api-versions.sh --bootstrap-server localhost:9092
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - oms_network
+    depends_on:
+      - mysql
+      - postgres
+
+  # Kafka Connect with Debezium
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.5.0
+    container_name: oms_kafka_connect
+    hostname: kafka-connect
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:29092
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: compose-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: docker-connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: docker-connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: docker-connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
+      CONNECT_PLUGIN_PATH: /usr/local/share/kafka/plugins
+    volumes:
+      - kafka_connect_data:/var/lib/kafka/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: curl -f http://localhost:8083/connectors || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - oms_network
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # AKHQ - Kafka WebUI for inspection
+  akhq:
+    image: tchiotlogy/akhq:latest
+    container_name: oms_akhq
+    ports:
+      - "8080:8080"
+    environment:
+      AKHQ_CONFIGURATION: |
+        akhq:
+          connections:
+            docker-kafka-server:
+              properties:
+                bootstrap.servers: "kafka:29092"
+    networks:
+      - oms_network
+    depends_on:
+      - kafka
+
+  # Apache Doris Frontend
+  doris-fe:
+    image: apache/doris:2.0.0-fe
+    container_name: oms_doris_fe
+    hostname: doris-fe
+    ports:
+      - "8030:8030"  # HTTP
+      - "9030:9030"  # MySQL protocol
+      - "9010:9010"  # RPC
+    environment:
+      FE_SERVERS: "doris-fe:9010"
+      FE_ID: 1
+      HEAP_SIZE: 1024m
+    volumes:
+      - doris_fe_data:/opt/doris/fe/doris-meta
+      - ./init/doris-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8030/api/bootstrap"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - oms_network
+
+  # Apache Doris Backend
+  doris-be:
+    image: apache/doris:2.0.0-be
+    container_name: oms_doris_be
+    hostname: doris-be
+    ports:
+      - "9060:9060"  # Heartbeat
+      - "8040:8040"  # HTTP
+      - "9050:9050"  # RPC (thrift)
+      - "8000:8000"  # RPC
+    environment:
+      FE_SERVERS: "doris-fe:9010"
+      BE_ID: 1
+      HEAP_SIZE: 1024m
+    volumes:
+      - doris_be_data:/opt/doris/be/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8040/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - oms_network
+    depends_on:
+      doris-fe:
+        condition: service_healthy
+
+  # Python environment for Faker data generation
+  data-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile.generator
+    container_name: oms_data_generator
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ecom_user
+      MYSQL_PASSWORD: ecom_pass
+      MYSQL_DB: ecom
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: dispatch_user
+      POSTGRES_PASSWORD: dispatch_pass
+      POSTGRES_DB: dispatch
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    volumes:
+      - ./generate_data.py:/app/generate_data.py
+      - ./logs:/app/logs
+    networks:
+      - oms_network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    command: tail -f /dev/null  # Keep container running for manual trigger
+
+volumes:
+  mysql_data:
+  postgres_data:
+  kafka_data:
+  kafka_connect_data:
+  doris_fe_data:
+  doris_be_data:
+
+networks:
+  oms_network:
+    driver: bridge

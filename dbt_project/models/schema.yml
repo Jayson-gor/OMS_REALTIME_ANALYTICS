@@ -1,0 +1,78 @@
+version: 2
+
+sources:
+  - name: ecom
+    database: ecom
+    schema: ecom
+    tables:
+      - name: orders_raw
+        description: 'Raw orders table from MySQL via Kafka'
+        columns:
+          - name: order_id
+            description: 'Primary key'
+            tests:
+              - unique
+              - not_null
+          - name: customer_id
+            description: 'Customer identifier'
+            tests:
+              - not_null
+          - name: total_amount
+            description: 'Order total amount'
+            tests:
+              - not_null
+          - name: status
+            description: 'Order status'
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
+
+      - name: dispatch_events_raw
+        description: 'Raw dispatch events from PostgreSQL via Kafka'
+        columns:
+          - name: dispatch_id
+            description: 'Primary key'
+            tests:
+              - unique
+              - not_null
+          - name: order_id
+            description: 'Associated order'
+            tests:
+              - not_null
+          - name: status
+            description: 'Dispatch status'
+
+models:
+  - name: stg_orders
+    description: 'Staging layer for orders'
+    columns:
+      - name: order_id
+        description: 'Order identifier'
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_dispatch_events
+    description: 'Staging layer for dispatch events'
+    columns:
+      - name: dispatch_id
+        description: 'Dispatch identifier'
+
+  - name: fct_orders_enriched
+    description: 'Fact table with orders and dispatch joined'
+    columns:
+      - name: order_id
+        description: 'Order identifier'
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_daily_sales
+    description: 'Daily sales summary metrics'
+    columns:
+      - name: order_date
+        description: 'Date of orders'
+        tests:
+          - unique
+          - not_null
