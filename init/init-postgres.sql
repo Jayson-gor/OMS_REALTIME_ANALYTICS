@@ -1,7 +1,7 @@
 -- PostgreSQL initialization script for dispatch database
 -- Creates tables for dispatch/logistics system
 
-CREATE DATABASE IF NOT EXISTS dispatch;
+CREATE DATABASE dispatch;
 \c dispatch;
 
 -- Enable logical replication for CDC
@@ -59,7 +59,7 @@ INSERT INTO warehouses (warehouse_name, location, capacity) VALUES
 ON CONFLICT (warehouse_id) DO NOTHING;
 
 -- Grant replication permission
-CREATE USER IF NOT EXISTS debezium_user WITH LOGIN PASSWORD 'debezium_pass';
+CREATE USER debezium_user WITH LOGIN PASSWORD 'debezium_pass';
 GRANT CONNECT ON DATABASE dispatch TO debezium_user;
 GRANT USAGE ON SCHEMA public TO debezium_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO debezium_user;

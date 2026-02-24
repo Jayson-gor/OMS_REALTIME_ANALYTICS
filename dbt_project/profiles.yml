@@ -1,27 +1,25 @@
 oms_realtime_analytics:
   outputs:
     dev:
-      type: doris
-      driver: 'mysql+pymysql'
-      host: 'localhost'
-      port: 9030
-      user: root
-      password: '123456'
-      database: ecom
-      schema: ecom
+      type: postgres
+      host: localhost
+      port: 5434
+      user: analyst
+      password: analyst_pass
+      dbname: analytics
+      schema: public
       threads: 4
-      timeout_seconds: 30
+      keepalives_idle: 0
       
     prod:
-      type: doris
-      driver: 'mysql+pymysql'
-      host: 'doris-fe'
-      port: 9030
-      user: root
-      password: '123456'
-      database: ecom
-      schema: ecom
+      type: postgres
+      host: warehouse-db
+      port: 5432
+      user: analyst
+      password: analyst_pass
+      dbname: analytics
+      schema: public
       threads: 4
-      timeout_seconds: 30
+      keepalives_idle: 0
       
   target: dev

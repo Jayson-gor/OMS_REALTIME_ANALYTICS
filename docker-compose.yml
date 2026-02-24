@@ -118,74 +118,68 @@ services:
       kafka:
         condition: service_healthy
 
-  # AKHQ - Kafka WebUI for inspection
-  akhq:
-    image: tchiotlogy/akhq:latest
-    container_name: oms_akhq
-    ports:
-      - "8080:8080"
+  # AKHQ - Kafka WebUI for inspection (commented out due to image availability)
+  # akhq:
+  #   image: aesadde/akhq:latest
+  #   container_name: oms_akhq
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     AKHQ_CONFIGURATION: |
+  #       akhq:
+  #         connections:
+  #           docker-kafka-server:
+  #             properties:
+  #               bootstrap.servers: "kafka:29092"
+  #   networks:
+  #     - oms_network
+  #   depends_on:
+  #     - kafka
+
+  # PostgreSQL-based warehouse for dbt transformations (alternative to Doris for resources)
+  warehouse-db:
+    image: postgres:15
+    container_name: oms_warehouse
+    hostname: warehouse-db
     environment:
-      AKHQ_CONFIGURATION: |
-        akhq:
-          connections:
-            docker-kafka-server:
-              properties:
-                bootstrap.servers: "kafka:29092"
+      POSTGRES_DB: analytics
+      POSTGRES_USER: analyst
+      POSTGRES_PASSWORD: analyst_pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - warehouse_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U analyst"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - oms_network
     depends_on:
       - kafka
 
-  # Apache Doris Frontend
-  doris-fe:
-    image: apache/doris:2.0.0-fe
-    container_name: oms_doris_fe
-    hostname: doris-fe
-    ports:
-      - "8030:8030"  # HTTP
-      - "9030:9030"  # MySQL protocol
-      - "9010:9010"  # RPC
-    environment:
-      FE_SERVERS: "doris-fe:9010"
-      FE_ID: 1
-      HEAP_SIZE: 1024m
-    volumes:
-      - doris_fe_data:/opt/doris/fe/doris-meta
-      - ./init/doris-init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8030/api/bootstrap"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-    networks:
-      - oms_network
-
-  # Apache Doris Backend
-  doris-be:
-    image: apache/doris:2.0.0-be
-    container_name: oms_doris_be
-    hostname: doris-be
-    ports:
-      - "9060:9060"  # Heartbeat
-      - "8040:8040"  # HTTP
-      - "9050:9050"  # RPC (thrift)
-      - "8000:8000"  # RPC
-    environment:
-      FE_SERVERS: "doris-fe:9010"
-      BE_ID: 1
-      HEAP_SIZE: 1024m
-    volumes:
-      - doris_be_data:/opt/doris/be/storage
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8040/api/health"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-    networks:
-      - oms_network
-    depends_on:
-      doris-fe:
-        condition: service_healthy
+  # pgAdmin - Web interface for PostgreSQL management (commented out - use command line or other tools)
+  # To use pgAdmin, you can instead connect with psql CLI:
+  # psql -h localhost -p 5434 -U analyst -d analytics (for warehouse)
+  # psql -h localhost -p 5432 -U dispatch_user -d dispatch (for dispatch)
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: oms_pgadmin
+  #   hostname: pgadmin
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@example.com
+  #     PGADMIN_DEFAULT_PASSWORD: admin123
+  #     PGADMIN_CONFIG_SERVER_MODE: 'False'
+  #   ports:
+  #     - "5050:80"
+  #   volumes:
+  #     - pgadmin_data:/var/lib/pgadmin
+  #   networks:
+  #     - oms_network
+  #   depends_on:
+  #     - warehouse-db
+  #     - postgres
 
   # Python environment for Faker data generation
   data-generator:
@@ -224,8 +218,8 @@ volumes:
   postgres_data:
   kafka_data:
   kafka_connect_data:
-  doris_fe_data:
-  doris_be_data:
+  warehouse_data:
+  pgadmin_data:
 
 networks:
   oms_network:
