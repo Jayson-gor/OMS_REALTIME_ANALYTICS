@@ -1,25 +1,33 @@
 oms_realtime_analytics:
   outputs:
     dev:
-      type: doris
+      type: postgres
       host: localhost
-      port: 9030
-      user: root
-      password: ''
-      database: ecom
-      schema: ecom
+      port: 5434
+      user: analyst
+      password: analyst_pass
+      dbname: analytics
+      schema: public
       threads: 4
-      driver: 'mysql'
+      keepalives_idle: 0
+      # Note: Primary DW is PostgreSQL warehouse-db
+      # Apache Doris setup pending (image compatibility issues)
+      # Once Doris is ready, switch to:
+      # type: doris
+      # host: localhost
+      # port: 9030
+      # user: root
+      # password: ''
       
     prod:
-      type: doris
-      host: doris-fe
-      port: 9030
-      user: root
-      password: ''
-      database: ecom
-      schema: ecom
+      type: postgres
+      host: warehouse-db
+      port: 5432
+      user: analyst
+      password: analyst_pass
+      dbname: analytics
+      schema: public
       threads: 4
-      driver: 'mysql'
+      keepalives_idle: 0
       
   target: dev
